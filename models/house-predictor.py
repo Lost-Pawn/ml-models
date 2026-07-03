@@ -27,13 +27,9 @@ y_pred = model.predict(X_test)
 print("Root Mean Squared Error:", root_mean_squared_error(y_test, y_pred))
 
 df = pd.DataFrame(X)
-df['Price'] = y
 
 plt.figure(figsize=(10, 6))
 sns.heatmap(df.corr(), cmap='coolwarm', annot=True, fmt=".2f")
-plt.xlabel("Median Income")
-plt.ylabel("House Value")
-plt.title("Median Income vs House Value")
 plt.tight_layout()
 
 plt.savefig("graph.png", dpi=150)
