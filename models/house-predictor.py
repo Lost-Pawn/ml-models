@@ -7,7 +7,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import root_mean_squared_error
 
-housing = fetch_california_housing(as_frame=True)
+housing = fetch_california_housing()
 
 X = housing.data
 y = housing.target
@@ -26,10 +26,15 @@ y_pred = model.predict(X_test)
 
 print("Root Mean Squared Error:", root_mean_squared_error(y_test, y_pred))
 
-df = pd.DataFrame(X)
+df = pd.DataFrame(
+    housing.data, 
+    columns=housing.feature_names
+)
 
-plt.figure(figsize=(10, 6))
-sns.heatmap(df.corr(), cmap='coolwarm', annot=True, fmt=".2f")
+df['MedHouseVal'] = housing.target
+
+plt.figure(figsize=(10, 8))
+sns.heatmap(df.corr()[['MedHouseVal']], cmap='coolwarm', annot=True, fmt=".2f")
 plt.tight_layout()
 
 plt.savefig("graph.png", dpi=150)
