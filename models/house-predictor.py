@@ -43,6 +43,7 @@ sns.heatmap(
 )
 plt.title("Correlation Heatmap")
 plt.tight_layout()
+plt.savefig("correlation_heatmap.png")  # Save the heatmap as an image
 plt.show()
 
 
@@ -55,6 +56,7 @@ df.hist(
 
 plt.suptitle("Feature Distributions")
 plt.tight_layout()
+plt.savefig("feature_distributions.png")  # Save the histograms as an image
 plt.show()
 
 
@@ -68,6 +70,7 @@ plt.xticks(rotation=45)
 plt.title("Boxplots for Outlier Detection")
 
 plt.tight_layout()
+plt.savefig("boxplots_outliers.png")  # Save the boxplots as an image
 plt.show()
 
 
@@ -95,6 +98,7 @@ for feature in important_features:
     plt.ylabel("Median House Value")
 
     plt.tight_layout()
+    plt.savefig(f"{feature}_vs_house_price.png")  # Save the scatter plot as an image
     plt.show()
 
 
@@ -103,12 +107,7 @@ for feature in important_features:
 X = df.drop("MedHouseVal", axis=1)
 y = df["MedHouseVal"]
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.2,
-    random_state=42
-)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 scaler = StandardScaler()
 
@@ -131,9 +130,12 @@ print("\nBaseline RMSE:", baseline_rmse)
 # REMOVE EXTREME OUTLIERS
 
 clean_df = df[
-    (df["AveOccup"] < 10) &
-    (df["AveRooms"] < 12) &
-    (df["Population"] < 5000)
+    (df["AveOccup"] < 5) &
+    (df["AveRooms"] < 8) &
+    (df["AveBedrms"] < 4) &
+    (df["HouseAge"] < 40) &
+    (df["Population"] < 8000) &
+    (df["MedHouseVal"] < 3)
 ]
 
 print("\nOriginal dataset size:", len(df))
@@ -146,12 +148,7 @@ print("Dataset size after cleaning:", len(clean_df))
 X = clean_df.drop("MedHouseVal", axis=1)
 y = clean_df["MedHouseVal"]
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.2,
-    random_state=42
-)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 scaler = StandardScaler()
 
