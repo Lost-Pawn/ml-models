@@ -1,12 +1,12 @@
 import pandas as pd
+import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 
 from sklearn.datasets import fetch_california_housing
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import root_mean_squared_error
+from sklearn.ensemble import RandomForestRegressor     
+from sklearn.metrics import root_mean_squared_error, r2_score
 
 # LOAD DATASET
 
@@ -35,42 +35,30 @@ print(df.describe())
 # FEATURE CORRELATION
 
 plt.figure(figsize=(10,8))
-sns.heatmap(
-    df.corr(),
-    annot=True,
-    cmap="coolwarm",
-    fmt=".2f"
-)
+sns.heatmap(df.corr(), annot=True, cmap="coolwarm", fmt=".2f")
 plt.title("Correlation Heatmap")
 plt.tight_layout()
-plt.savefig("correlation_heatmap.png")  # Save the heatmap as an image
+plt.savefig("correlation_heatmap.png")  
 plt.show()
 
 
 # HISTOGRAMS
 
-df.hist(
-    figsize=(15,10),
-    bins=30
-)
-
+df.hist(figsize=(15,10), bins=50, color='skyblue', edgecolor='black')
 plt.suptitle("Feature Distributions")
 plt.tight_layout()
-plt.savefig("feature_distributions.png")  # Save the histograms as an image
+plt.savefig("feature_distributions.png")  
 plt.show()
 
 
 # BOXPLOTS FOR OUTLIERS
 
 plt.figure(figsize=(14,8))
-
 sns.boxplot(data=df)
-
 plt.xticks(rotation=45)
 plt.title("Boxplots for Outlier Detection")
-
 plt.tight_layout()
-plt.savefig("boxplots_outliers.png")  # Save the boxplots as an image
+plt.savefig("boxplots_outliers.png")  
 plt.show()
 
 
@@ -87,18 +75,13 @@ important_features = [
 for feature in important_features:
     plt.figure(figsize=(7,5))
 
-    sns.scatterplot(
-        x=df[feature],
-        y=df["MedHouseVal"],
-        alpha=0.3
-    )
-
+    sns.scatterplot(x=df[feature], y=df["MedHouseVal"], alpha=0.3)
     plt.title(f"{feature} vs House Price")
     plt.xlabel(feature)
     plt.ylabel("Median House Value")
 
     plt.tight_layout()
-    plt.savefig(f"{feature}_vs_house_price.png")  # Save the scatter plot as an image
+    plt.savefig(f"{feature}_vs_house_price.png")  
     plt.show()
 
 
@@ -109,38 +92,25 @@ y = df["MedHouseVal"]
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-scaler = StandardScaler()
+model = RandomForestRegressor(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
 
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
-
-model = LinearRegression()
-
-model.fit(X_train_scaled, y_train)
-
-y_pred = model.predict(X_test_scaled)
-
-baseline_rmse = root_mean_squared_error(
-    y_test,
-    y_pred
-)
-
+baseline_rmse = root_mean_squared_error(y_test, y_pred)
 print("\nBaseline RMSE:", baseline_rmse)
+
 
 # REMOVE EXTREME OUTLIERS
 
-clean_df = df[
-    (df["AveOccup"] < 5) &
-    (df["AveRooms"] < 8) &
-    (df["AveBedrms"] < 4) &
-    (df["HouseAge"] < 40) &
-    (df["Population"] < 8000) &
-    (df["MedHouseVal"] < 3)
-]
+df["Population"] = np.log1p(df["Population"])
+df["AveOccup"] = np.log1p(df["AveOccup"])
+df["AveRooms"] = np.log1p(df["AveRooms"])
+df["AveBedrms"] = np.log1p(df["AveBedrms"])
+
+clean_df = df[df["MedHouseVal"] < 5.0].reset_index(drop=True)
 
 print("\nOriginal dataset size:", len(df))
 print("Dataset size after cleaning:", len(clean_df))
-
 
 
 # RETRAIN AFTER CLEANING
@@ -150,22 +120,21 @@ y = clean_df["MedHouseVal"]
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-scaler = StandardScaler()
+model = RandomForestRegressor(bootstrap=False, max_features=3, n_estimators=300, random_state=42)
+model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
 
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
+improved_rmse = root_mean_squared_error(y_test, y_pred)
 
-model = LinearRegression()
-
-model.fit(X_train_scaled, y_train)
-
-y_pred = model.predict(X_test_scaled)
-
-improved_rmse = root_mean_squared_error(
-    y_test,
-    y_pred
-)
-
+print("R2 Score:", r2_score(y_test, y_pred))
 print("\nRMSE After Outlier Removal:", improved_rmse)
-
 print("\nImprovement:", baseline_rmse - improved_rmse)
+
+plt.figure(figsize=(7,5))
+sns.lineplot(x=y_test, y=y_pred, alpha=0.3)
+plt.title("Predicted vs Actual House Prices")
+plt.xlabel("Actual House Prices")
+plt.ylabel("Predicted House Prices")
+plt.tight_layout()
+plt.savefig("predicted_vs_actual.png") 
+plt.show()
