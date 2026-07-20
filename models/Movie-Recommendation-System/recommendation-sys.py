@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 import tensorflow as tf
 from sklearn.metrics.pairwise import cosine_similarity
@@ -147,7 +147,7 @@ genome_tags = pd.read_csv("data/genome_tags.csv")
 # Handling missing values (Cleaning)
 
 tags = tags.dropna(subset=["tag"])
-links["tmdbId"] = links["tmdbId"].fillna(0)
+links["tmdbId"] = links["tmdbId"].fillna(0) # useless btw
 
 # Feature engineering — movie features
 
@@ -162,8 +162,9 @@ movies["num_genres"] = genre_dummies.sum(axis=1)
 
 genome_matrix_raw = genome_scores.pivot(index="movieId", columns="tagId", values="relevance").fillna(0)
 
-pca = PCA(n_components=32, random_state=42)
+pca = PCA(n_components=50, random_state=42)
 genome_reduced = pca.fit_transform(genome_matrix_raw.values).astype("float32")
+
 movie_genome_matrix = pd.DataFrame(
     genome_reduced,
     columns=[f"genome_pc_{i}" for i in range(genome_reduced.shape[1])],
@@ -171,7 +172,7 @@ movie_genome_matrix = pd.DataFrame(
 ).reset_index()
 
 # Split -- before computing rating derived agg to avoid leakage
-train_ratings, test_ratings = train_test_split(ratings, test_size=0.2, random_state=42)
+train_ratings, test_ratings = train_test_split(ratings, test_size=0.3, random_state=42)
 
 # Feature engineering — user and movie features with biases
 
@@ -191,7 +192,7 @@ movie_features["movie_std_rating"] = movie_features["movie_std_rating"].fillna(0
 movie_features["movie_bias"] = movie_features["movie_avg_rating"] - global_mean
 movie_features["movie_popularity_log"] = np.log1p(movie_features["movie_num_ratings"])
 
-#  Feature lookup dict -- O(1) access during training and inference
+#  Feature lookup dict --> O(1) access during training and inference
 
 movie_id_to_genre = dict(zip(movies["movieId"].astype(str), genre_dummies.values.astype("float32")))
 genre_dim = genre_dummies.shape[1]
@@ -241,7 +242,7 @@ print("Train dataset element spec:", train_ds.element_spec)
 # Embedding dimensions 
 num_unique_users = int(ratings["userId"].max()) + 1
 num_unique_movies = int(ratings["movieId"].max()) + 1
-emdedding_dim = 16
+embedding_dim = 50
 
 # Hybrid Recommender Model: Collaborative + Content-based
 
@@ -249,32 +250,32 @@ class HybridRecommender(tf.keras.Model):
     def __init__(self, num_users, num_movies, embedding_dim, genre_dim, genome_dim):
         super().__init__()
 
-        embed_reg = tf.keras.regularizers.l2(1e-5)
+        embedding_reg = tf.keras.regularizers.l2(0.0001)
         self.user_embedding = tf.keras.layers.Embedding(
             num_users, embedding_dim, embeddings_initializer="he_normal",
-            embeddings_regularizer=embed_reg, name="user_embedding")
+            embeddings_regularizer=embedding_reg, name="user_embedding")
         self.movie_embedding = tf.keras.layers.Embedding(
             num_movies, embedding_dim, embeddings_initializer="he_normal",
-            embeddings_regularizer=embed_reg, name="movie_embedding")
+            embeddings_regularizer=embedding_reg, name="movie_embedding")
  
-        dense_reg = tf.keras.regularizers.l2(1e-5)
+        dense_reg = tf.keras.regularizers.l2(0.0001)
         self.dense1 = tf.keras.layers.Dense(64, activation="relu", kernel_regularizer=dense_reg)
-        self.dropout1 = tf.keras.layers.Dropout(0.3)
-        self.dense2 = tf.keras.layers.Dense(32, activation="relu", kernel_regularizer=dense_reg)
-        self.dropout2 = tf.keras.layers.Dropout(0.3)
+        self.dropout1 = tf.keras.layers.Dropout(0.4)
+        self.dense2 = tf.keras.layers.Dense(64, activation="relu", kernel_regularizer=dense_reg)
+        self.dropout2 = tf.keras.layers.Dropout(0.2)
         self.residual_out = tf.keras.layers.Dense(1, activation=None)
  
     def call(self, inputs, training=False):
-        u_emb = self.user_embedding(inputs["user_id"])          
-        m_emb = self.movie_embedding(inputs["movie_id"])       
+        user_emb = self.user_embedding(inputs["user_id"])          
+        movie_emb = self.movie_embedding(inputs["movie_id"])       
  
         scalar_feats = tf.stack([
             inputs["movie_popularity"],
             inputs["user_activity"],
-        ], axis=1)                                               
+        ], axis=1)                                   
  
         x = tf.concat([
-            u_emb, m_emb,
+            user_emb, movie_emb,
             inputs["genre_vector"],
             inputs["genome_vector"],
             scalar_feats,
@@ -284,7 +285,7 @@ class HybridRecommender(tf.keras.Model):
         x = self.dropout1(x, training=training)
         x = self.dense2(x)
         x = self.dropout2(x, training=training)
-        residual = tf.squeeze(self.residual_out(x), axis=1)      
+        residual = tf.squeeze(self.residual_out(x), axis=1)  #(batch_size, 1) to (batch_size,)
  
         pred = global_mean + inputs["user_bias"] + inputs["movie_bias"] + residual
         return pred
@@ -293,7 +294,7 @@ class HybridRecommender(tf.keras.Model):
 model = HybridRecommender(
     num_users=num_unique_users,
     num_movies=num_unique_movies,
-    embedding_dim=emdedding_dim,
+    embedding_dim=embedding_dim,
     genre_dim=genre_dim,
     genome_dim=genome_vals.shape[1],
 )
@@ -303,10 +304,10 @@ loss_fn = tf.keras.losses.MeanSquaredError()
  
 BATCH_SIZE = 1024
 EPOCHS = 100
-PATIENCE = 3
+PATIENCE = 5
  
-train_ds_batched = train_ds.shuffle(buffer_size=100_000, seed=42).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
-test_ds_batched = test_ds.batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+train_ds_batched = train_ds.cache().shuffle(buffer_size=100_000, seed=42).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+test_ds_batched = test_ds.cache().batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
  
 # Training loop with early stopping
 
@@ -342,81 +343,73 @@ for epoch in range(EPOCHS):
     val_loss = float(np.mean(val_losses))
     print(f"Epoch {epoch + 1:3d} | train_mse={train_loss:.4f} | val_mse={val_loss:.4f}")
  
-    if val_loss < best_val_loss - 1e-4:
+    if val_loss < best_val_loss - 0.001: # small threshold to avoid tiny fluctuations
         best_val_loss = val_loss
         patience_counter = 0
         best_weights = [w.numpy() for w in model.trainable_variables]
     else:
         patience_counter += 1
         if patience_counter >= PATIENCE:
-            print(f"Early stopping triggered at epoch {epoch + 1} (best val_mse={best_val_loss:.4f})")
+            print(f"Early stopping triggered at epoch {epoch + 1} (best val mse={best_val_loss:.4f})")
             for w, bw in zip(model.trainable_variables, best_weights):
                 w.assign(bw)
             break
  
- # User-based Collaborative Filtering for Recommendations
-  
+# User-based CF using learned embeddings 
+
 num_users_dim = int(num_unique_users)
 num_movies_dim = int(num_unique_movies)
- 
-all_user_ids = ratings["userId"].unique()
+
 movie_id_to_title = dict(zip(movies["movieId"], movies["title"]))
- 
-pos_ratings = ratings[ratings["rating"] >= 4.0]
-R_pos = sp.csr_matrix(
-    (pos_ratings["rating"].values.astype("float32"),
-     (pos_ratings["userId"].values, pos_ratings["movieId"].values)),
+full_user_embeddings = model.user_embedding(tf.range(num_users_dim)).numpy()
+
+# Sparse matrices: what each user has LIKED (≥4.0) and SEEN (any rating)
+positive_ratings = ratings[ratings["rating"] >= 4.0]
+
+ratings_positive = sp.csr_matrix(
+    (positive_ratings["rating"].values.astype("float32"),
+     (positive_ratings["userId"].values, positive_ratings["movieId"].values)),
     shape=(num_users_dim, num_movies_dim),
 )
- 
-R_seen = sp.csr_matrix(
+
+ratings_seen = sp.csr_matrix(
     (np.ones(len(ratings), dtype="float32"),
      (ratings["userId"].values, ratings["movieId"].values)),
     shape=(num_users_dim, num_movies_dim),
 )
- 
-full_user_embeddings = model.user_embedding(tf.range(num_users_dim)).numpy()
- 
- 
-def recommend_for_users(user_ids, k_neighbors=20, top_n=10):
-    """Vectorized user-based CF for many target users at once.
-    Returns {user_id: [(title, score), ...]}."""
-    user_ids = np.asarray(user_ids)
- 
-    target_emb = full_user_embeddings[user_ids]                    
-    sims = cosine_similarity(target_emb, full_user_embeddings)     
-    sims[np.arange(len(user_ids)), user_ids] = -1.0                
- 
-    if k_neighbors < sims.shape[1]:
-        drop_idx = np.argpartition(sims, -k_neighbors, axis=1)[:, :-k_neighbors]
-        row_idx = np.repeat(np.arange(sims.shape[0]), drop_idx.shape[1])
-        sims[row_idx, drop_idx.ravel()] = 0.0
-    sims[sims < 0] = 0.0  
-    
-    scores = (sp.csr_matrix(sims) @ R_pos).toarray()                
- 
-    seen_mask = R_seen[user_ids].toarray() > 0
-    scores[seen_mask] = -np.inf
- 
-    recommendations = {}
-    for i, uid in enumerate(user_ids):
-        row = scores[i]
-        top_idx = np.argpartition(row, -top_n)[-top_n:]
-        top_idx = top_idx[np.argsort(row[top_idx])[::-1]]
-        recommendations[uid] = [
-            (movie_id_to_title.get(mid, f"movieId={mid}"), float(row[mid]))
-            for mid in top_idx if np.isfinite(row[mid])
-        ]
-    return recommendations
- 
-n_users = 200
-rng = np.random.default_rng(42)
-target_users = rng.choice(all_user_ids, size=n_users, replace=False)
- 
-all_recommendations = recommend_for_users(target_users, k_neighbors=20, top_n=10)
- 
-for uid in target_users[:10]:  # preview the first 10
+
+def recommend_for_user(user_id, k_neighbors=20, top_n=10):
+
+    # Step 1: find the k most similar users via embedding cosine similarity
+    user_emb = full_user_embeddings[[user_id]]                      # (1, emb_dim)
+    sims = cosine_similarity(user_emb, full_user_embeddings)[0] # (num_users,)
+    sims[user_id] = -1.0                                            # exclude self
+
+    neighbor_ids = np.argsort(sims)[-k_neighbors:]                  # top-k indices
+
+    # Step 2: score every movie by how much those neighbors liked it
+    neighbor_sims   = sims[neighbor_ids]                            # (k,)
+    neighbor_posmat = ratings_positive[neighbor_ids]                           # (k, num_movies)
+    scores          = neighbor_sims @ neighbor_posmat                # (num_movies,)
+
+    # Step 3: zero out movies this user has already seen
+    seen_movie_ids     = ratings_seen[user_id].indices
+    scores[seen_movie_ids] = -np.inf
+
+    # Step 4: pick top-N and return as (title, score) pairs
+    top_ids = np.argsort(scores)[-top_n:][::-1] # pick and reverse
+    return [
+        (movie_id_to_title.get(mid, f"movieId={mid}"), float(scores[mid]))
+        for mid in top_ids if np.isfinite(scores[mid])
+    ]
+
+target_users = np.random.default_rng(42).choice(
+    ratings["userId"].unique(), size=200, replace=False
+)
+
+all_recommendations = {uid: recommend_for_user(uid) for uid in target_users}
+
+for uid in target_users[:5]:
     print(f"\nTop recommendations for user {uid}:")
     for title, score in all_recommendations[uid]:
         print(f"  {title}  (score={score:.2f})")
- 
