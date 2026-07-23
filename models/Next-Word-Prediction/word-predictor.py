@@ -54,3 +54,38 @@ x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(10000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
 test_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
 
+model = tf.keras.Sequential([
+    tf.keras.layers.Embedding(input_dim=vocab_size, output_dim=64),
+    tf.keras.layers.LSTM(64, return_sequences=True),
+    tf.keras.layers.Dropout(0.2),
+    tf.keras.layers.LSTM(64, return_sequences=False),
+    tf.keras.layers.Dropout(0.2),
+    tf.keras.layers.Dense(vocab_size, activation="softmax"),
+])
+
+model.compile(
+    loss="sparse_categorical_crossentropy",
+    optimizer="adam",
+    metrics=["accuracy"],
+)
+
+early_stopping = tf.keras.callbacks.EarlyStopping(
+    monitor="val_loss", 
+    patience=3, 
+    restore_best_weights=True
+)
+
+history = model.fit(
+    train_ds,
+    validation_data=test_ds,
+    epochs=100,
+    callbacks=[early_stopping],
+)
+
+model.summary()
+
+loss, accuracy = model.evaluate(test_ds)
+print(f"Model evaluation completed. Loss: {loss}, Accuracy: {accuracy}")
+
+model.save("next_word_prediction.keras")
+
