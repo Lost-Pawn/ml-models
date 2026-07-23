@@ -8,12 +8,18 @@ from kaggle.api.kaggle_api_extended import KaggleApi
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 
+gpus = tf.config.list_physical_devices('GPU')
+print(f"GPUs available: {gpus}")
+if not gpus:
+    print("no GPU available.")
+
+tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 # hyperparameters
 N_ROWS = 200_000
 MAX_VOCAB_SIZE = 20_000
 MAX_SEQ_LEN = 60
-BATCH_SIZE = 256
+BATCH_SIZE = 512
 
 # load dataset
 with tempfile.TemporaryDirectory() as tmp_dir:
@@ -48,53 +54,50 @@ all_sequences = tokenizer.texts_to_sequences(data)
 max_sequence_len = max(len(seq) for seq in all_sequences)
 max_sequence_len = min(MAX_SEQ_LEN, max_sequence_len)  
 
-def sequences_generator(sentences, tokenizer, max_sequence_len):
-    for sentence in sentences:
-        seq = tokenizer.texts_to_sequences([sentence])[0]
+# create n-gram sequences
+def build_ngram_arrays(sentences, tokenizer, max_sequence_len):
+    all_sequences = tokenizer.texts_to_sequences(sentences)
+
+    input_sequences = []
+    for seq in all_sequences:
         for i in range(1, len(seq)):
-            n_gram_sequence = seq[:i + 1]
-            padded = tf.keras.preprocessing.sequence.pad_sequences(
-                [n_gram_sequence], 
-                maxlen=max_sequence_len, 
-                padding="pre",
-                # truncating="pre"
-            )
-            yield padded[0, :-1], padded[0, -1] # all rows except last column as X, last column as y
+            input_sequences.append(seq[:i + 1])
 
+    if not input_sequences:
+        return np.empty((0, max_sequence_len - 1), dtype=np.int32), np.empty((0,), dtype=np.int32)
 
-text_train, text_test = train_test_split(data, 
-                                        test_size=0.2, 
-                                        random_state=42, 
-                                        shuffle=True
-                                        )
+    padded = tf.keras.preprocessing.sequence.pad_sequences(
+        input_sequences,
+        maxlen=max_sequence_len,
+        padding="pre",
+        truncating="pre",
+    )
+    X, y = padded[:, :-1], padded[:, -1]
+    return X.astype(np.int32), y.astype(np.int32)
 
-output_signature = (
-    tf.TensorSpec(shape=(max_sequence_len - 1,), dtype=tf.int32),
-    tf.TensorSpec(shape=(), dtype=tf.int32),
-)
-    
+text_train, text_test = train_test_split(data, test_size=0.2, random_state=42)
+
+X_train, y_train = build_ngram_arrays(text_train, tokenizer, MAX_SEQ_LEN)
+
 train_ds = (tf.data.Dataset
-            .from_generator(lambda: sequences_generator(text_train, tokenizer, max_sequence_len),
-                            output_signature=output_signature
-                            )
-                            .shuffle(10000)
-                            .batch(BATCH_SIZE)
-                            .prefetch(tf.data.AUTOTUNE))
+            .from_tensor_slices((X_train, y_train))
+            .shuffle(10000)
+            .batch(BATCH_SIZE)
+            .cache()
+            .prefetch(tf.data.AUTOTUNE))
 
 test_ds = (tf.data.Dataset
-           .from_generator(lambda: sequences_generator(text_test, tokenizer, max_sequence_len), 
-                           output_signature=output_signature
-                           )
+           .from_tensor_slices(build_ngram_arrays(text_test, tokenizer, MAX_SEQ_LEN))
            .batch(BATCH_SIZE)
            .prefetch(tf.data.AUTOTUNE))
-
+           
 model = tf.keras.Sequential([
     tf.keras.layers.Embedding(input_dim=vocab_size, output_dim=64),
     tf.keras.layers.LSTM(128, return_sequences=True),
     tf.keras.layers.Dropout(0.2),
     tf.keras.layers.LSTM(64, return_sequences=False),
     tf.keras.layers.Dropout(0.2),
-    tf.keras.layers.Dense(vocab_size, activation="softmax"),
+    tf.keras.layers.Dense(vocab_size, activation="softmax", dtype="float32"),
 ])
 
 model.compile(
