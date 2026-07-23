@@ -89,3 +89,24 @@ print(f"Model evaluation completed. Loss: {loss}, Accuracy: {accuracy}")
 
 model.save("next_word_prediction.keras")
 
+plt.figure(figsize=(12,6))
+plt.subplot(1,2,1)
+plt.plot(history.history["loss"], label="Training")
+plt.plot(history.history["val_loss"], label="Validation")
+plt.title("Loss")
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+plt.legend()
+
+plt.subplot(1,2,2)
+plt.plot(history.history["accuracy"], label="Training")
+plt.plot(history.history["val_accuracy"], label="Validation")
+plt.title("Accuracy")
+plt.xlabel("Epoch")
+plt.ylabel("Accuracy")
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+
