@@ -8,6 +8,7 @@ from kaggle.api.kaggle_api_extended import KaggleApi
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 
+# load dataset
 N_ROWS = 200_000
 MAX_VOCAB_SIZE = 20_000
 BATCH_SIZE = 256
@@ -21,6 +22,7 @@ with tempfile.TemporaryDirectory() as tmp_dir:
     file_path = os.path.join(tmp_dir, os.listdir(tmp_dir)[0])
     dataset = pd.read_csv(file_path, compression='infer')
 
+# eda
 df = dataset.iloc[:N_ROWS].copy()
 print(df.head())
 
@@ -32,6 +34,7 @@ print(df.info())
 data = df["text"].dropna().astype(str).tolist() 
 print(len(data), type(data))
 
+# data preprocessing
 def data_preprocessing(data):
     tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=MAX_VOCAB_SIZE, oov_token="<OOV>")
     tokenizer.fit_on_texts(data)
@@ -43,7 +46,7 @@ def data_preprocessing(data):
             input_sequences.append(n_gram_sequence)
     max_sequence_len = max([len(x) for x in input_sequences])
     input_sequences = tf.keras.preprocessing.sequence.pad_sequences(input_sequences, maxlen=max_sequence_len, padding="pre")
-    X, y = input_sequences[:, :-1], input_sequences[:, -1]
+    X, y = input_sequences[:, :-1], input_sequences[:, -1] # (all rows, all columns) - last column
     return X, y, tokenizer
 
 X, y, tokenizer = data_preprocessing(data)
@@ -89,6 +92,7 @@ print(f"Model evaluation completed. Loss: {loss}, Accuracy: {accuracy}")
 
 model.save("next_word_prediction.keras")
 
+# plot training history
 plt.figure(figsize=(12,6))
 plt.subplot(1,2,1)
 plt.plot(history.history["loss"], label="Training")
@@ -109,4 +113,27 @@ plt.legend()
 plt.tight_layout()
 plt.show()
 
+# beam search
+def beam_search(model, tokenizer, seed_text, beam_width=3, max_sequence_len=20):
+    sequences = [[seed_text, 0.0]]
+    for _ in range(max_sequence_len):
+        all_candidates = []
+        for seq, score in sequences:
+            token_list = tokenizer.texts_to_sequences([seq])[0]
+            token_list = tf.keras.preprocessing.sequence.pad_sequences(
+                [token_list], maxlen=max_sequence_len - 1, padding="pre"
+            )
+            predictions = model(token_list, training=False)
+            top_indices = np.argsort(predictions[0])[-beam_width:]
+            for index in top_indices:
+                if index == 0:
+                    continue
+                word = tokenizer.index_word.get(index)
+                if word is None:
+                    continue
+                candidate = [seq + " " + word, score - np.log(predictions[0][index] + 1e-9)]
+                all_candidates.append(candidate)
+        ordered = sorted(all_candidates, key=lambda tup: tup[1])
+        sequences = ordered[:beam_width]
+    return sequences
 
