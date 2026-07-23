@@ -8,11 +8,14 @@ from kaggle.api.kaggle_api_extended import KaggleApi
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 
-# load dataset
+
+# hyperparameters
 N_ROWS = 200_000
 MAX_VOCAB_SIZE = 20_000
-BATCH_SIZE = 64
+MAX_SEQ_LEN = 60
+BATCH_SIZE = 256
 
+# load dataset
 with tempfile.TemporaryDirectory() as tmp_dir:
     api = KaggleApi()
     api.authenticate()
@@ -35,37 +38,59 @@ data = df["text"].dropna().astype(str).tolist()
 print(len(data), type(data))
 
 # data preprocessing
+# tokenization
 tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=MAX_VOCAB_SIZE, oov_token="<OOV>")
 tokenizer.fit_on_texts(data)
+vocab_size = min(MAX_VOCAB_SIZE, len(tokenizer.word_index) + 1)
 
-def sequences_generator(data, tokenizer):
-    for sentance in data:
-        seq = tokenizer.texts_to_sequences([sentance])[0]
+# for global max length of sequences
+all_sequences = tokenizer.texts_to_sequences(data)
+max_sequence_len = max(len(seq) for seq in all_sequences)
+max_sequence_len = min(MAX_SEQ_LEN, max_sequence_len)  
 
+def sequences_generator(sentences, tokenizer, max_sequence_len):
+    for sentence in sentences:
+        seq = tokenizer.texts_to_sequences([sentence])[0]
         for i in range(1, len(seq)):
             n_gram_sequence = seq[:i + 1]
-            max_sequence_len = max([len(x) for x in n_gram_sequence])[0]
-            input_sequences = tf.keras.preprocessing.sequence.pad_sequences([n_gram_sequence], maxlen=max_sequence_len, padding="pre")
-            yield input_sequences[:, :-1], input_sequences[:, -1]
+            padded = tf.keras.preprocessing.sequence.pad_sequences(
+                [n_gram_sequence], 
+                maxlen=max_sequence_len, 
+                padding="pre",
+                # truncating="pre"
+            )
+            yield padded[0, :-1], padded[0, -1] # all rows except last column as X, last column as y
 
-X, y = zip(*sequences_generator(data, tokenizer))
-vocab_size = len(tokenizer.word_index) + 1
 
-# x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=True)
+text_train, text_test = train_test_split(data, 
+                                        test_size=0.2, 
+                                        random_state=42, 
+                                        shuffle=True
+                                        )
 
-train_ds = tf.data.Dataset.from_generator(lambda: sequences_generator(data, tokenizer), output_signature=(
-    tf.TensorSpec(shape=(None, None), dtype=tf.int32),
-    tf.TensorSpec(shape=(None,), dtype=tf.int32)
-)).shuffle(10000).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+output_signature = (
+    tf.TensorSpec(shape=(max_sequence_len - 1,), dtype=tf.int32),
+    tf.TensorSpec(shape=(), dtype=tf.int32),
+)
+    
+train_ds = (tf.data.Dataset
+            .from_generator(lambda: sequences_generator(text_train, tokenizer, max_sequence_len),
+                            output_signature=output_signature
+                            )
+                            .shuffle(10000)
+                            .batch(BATCH_SIZE)
+                            .prefetch(tf.data.AUTOTUNE))
 
-test_ds = tf.data.Dataset.from_generator(lambda: sequences_generator(data, tokenizer), output_signature=(
-    tf.TensorSpec(shape=(None, None), dtype=tf.int32),
-    tf.TensorSpec(shape=(None,), dtype=tf.int32)
-)).batch(BATCH_SIZE).prefetch(tf.data.AUTOTUNE)
+test_ds = (tf.data.Dataset
+           .from_generator(lambda: sequences_generator(text_test, tokenizer, max_sequence_len), 
+                           output_signature=output_signature
+                           )
+           .batch(BATCH_SIZE)
+           .prefetch(tf.data.AUTOTUNE))
 
 model = tf.keras.Sequential([
     tf.keras.layers.Embedding(input_dim=vocab_size, output_dim=64),
-    tf.keras.layers.LSTM(64, return_sequences=True),
+    tf.keras.layers.LSTM(128, return_sequences=True),
     tf.keras.layers.Dropout(0.2),
     tf.keras.layers.LSTM(64, return_sequences=False),
     tf.keras.layers.Dropout(0.2),
