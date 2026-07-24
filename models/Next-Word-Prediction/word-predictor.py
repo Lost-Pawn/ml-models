@@ -47,7 +47,7 @@ print(len(data), type(data))
 # tokenization
 tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=MAX_VOCAB_SIZE, oov_token="<OOV>")
 tokenizer.fit_on_texts(data)
-vocab_size = min(MAX_VOCAB_SIZE, len(tokenizer.word_index) + 1)
+vocab_size = min(MAX_VOCAB_SIZE, len(tokenizer.word_index) + 1) + 1
 
 
 # create n-gram sequences
@@ -103,7 +103,7 @@ model.compile(
     loss="sparse_categorical_crossentropy",
     optimizer="adam",
     metrics=["accuracy"],
-    jit_compile=True,   # cuDNN optimization for faster training
+    jit_compile=False,   
 )
 
 early_stopping = tf.keras.callbacks.EarlyStopping(
