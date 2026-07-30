@@ -1,0 +1,6 @@
+outs:
+- md5: 4c931ba846e4e777f6fdb0ad7d543dd6.dir
+  size: 456803820
+  nfiles: 20000
+  hash: md5
+  path: train
