@@ -1,11 +1,17 @@
-from fastapi import FastAPI, UploadFile, File
-from PIL import Image
-import numpy as np
 import io
+import json
+import logging
+from datetime import datetime
+
 import mlflow.tensorflow
+import numpy as np
+from fastapi import FastAPI, File, UploadFile
+from PIL import Image
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
 app = FastAPI()
+
+logging.basicConfig(filename='predictions.log', level=logging.INFO)
 
 loaded_model = mlflow.tensorflow.load_model("models:/catdog-classifier@production")
 
@@ -27,4 +33,10 @@ async def predict(file: UploadFile = File(...)):
     label = "dog" if result > 0.5 else "cat"
     confidence = result if label == "dog" else 1 - result
 
+    logging.info(json.dumps({
+        "timestamp": datetime.now().isoformat(),
+        "label": label,
+        "confidence": float(confidence)
+    }))
+        
     return {"prediction": label, "confidence": float(confidence)}
