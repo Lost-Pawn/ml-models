@@ -7,7 +7,7 @@ from tensorflow.keras.datasets import fashion_mnist
 (train_images, _), (test_images, _) = fashion_mnist.load_data()
 
 # Forward diffusion process per time step
-T = 500
+T = 1000
 beta = np.linspace(0.0001, 0.02, T)
 alphas = 1 - beta
 alphas_cumprod = np.cumprod(alphas)
@@ -20,10 +20,10 @@ def forward_diffusion(x0, t):
     return xt, t, noise
 
 # Visualize the forward diffusion process for a sample image
-x0 = train_images[0:1].astype('float32') / 255.0
+x0 = train_images[69:70].astype('float32') / 255.0
 x0 = x0.reshape(-1, 28, 28, 1)
 
-t_values = [0, 50, 100, 200, 299]
+t_values = [0, 200, 400, 600, 800, 999]  
 
 plt.figure(figsize=(15, 4))
 for idx, t_val in enumerate(t_values):
@@ -113,12 +113,14 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
 loss = tf.keras.losses.MeanSquaredError()
 
 # Training loop
-BATCH_SIZE = 64
-EPOCHS = 50
+BATCH_SIZE = 1024
+EPOCHS = 20
 train_images = train_images.astype('float32') / 255.0
 train_images = np.expand_dims(train_images, axis=-1)
+best_loss = float('inf')
 
 for epoch in range(EPOCHS):
+    epoch_losses = []
     np.random.shuffle(train_images)
 
     for i in range(0, len(train_images), BATCH_SIZE):
@@ -134,10 +136,15 @@ for epoch in range(EPOCHS):
         optimizer.apply_gradients(zip(grads, model.trainable_variables))
 
     print(f"Epoch {epoch + 1}/{EPOCHS}, Loss: {loss_value.numpy()}")
+    epoch_losses.append(loss_value.numpy())
 
-model.save("mini_diffusion_model.keras")
+    # save the best model based on the lowest loss
+    if np.mean(epoch_losses) < best_loss:
+        best_loss = np.mean(epoch_losses)
+        model.save("mini_diffusion_model.keras")
 
 # evaluation and visualization of the reverse diffusion process
+plt.figure(figsize=(15, 4))
 for t_val in reversed(t_values):
     xt, _, _ = forward_diffusion(x0, t_val)
     noise_pred = model.predict([xt, np.array([t_val])])
@@ -145,7 +152,9 @@ for t_val in reversed(t_values):
 
     plt.subplot(1, len(t_values), t_values.index(t_val) + 1)
     plt.imshow(x0_pred.reshape(28, 28), cmap='gray')
-    plt.title(f"Reconstructed Image at t = {t_val}")
+    plt.title(f"Reconstructed at t = {t_val}")
     plt.axis('off')
-    plt.savefig(f"reconstructed_image_t_{t_val}.png")
-    plt.show()
+
+plt.tight_layout()
+plt.savefig("reconstructed_all.png")   
+plt.show()
