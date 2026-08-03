@@ -67,7 +67,7 @@ def mini_diffusion_model(dim=32):
     # Down block 1
     x = tf.keras.layers.Conv2D(32, (3,3), activation="relu", padding="same")(input_img)
     t_proj1 = tf.keras.layers.Dense(32)(t_emb)
-    t_proj1 = tf.reshape(t_proj1, (-1, 1, 1, 32))
+    t_proj1 = tf.keras.layers.Reshape((1, 1, 32))(t_proj1)
     x = x + t_proj1
     skip1 = x
     x = tf.keras.layers.MaxPooling2D(2)(x)
@@ -75,7 +75,7 @@ def mini_diffusion_model(dim=32):
     # Down block 2
     x = tf.keras.layers.Conv2D(64, (3,3), activation="relu", padding="same")(x)
     t_proj2 = tf.keras.layers.Dense(64)(t_emb)
-    t_proj2 = tf.reshape(t_proj2, (-1, 1, 1, 64))
+    t_proj2 = tf.keras.layers.Reshape((1, 1, 64))(t_proj2)
     x = x + t_proj2
     skip2 = x
     x = tf.keras.layers.MaxPooling2D(2)(x)
@@ -83,7 +83,7 @@ def mini_diffusion_model(dim=32):
     # Bottleneck
     x = tf.keras.layers.Conv2D(128, (3,3), activation="relu", padding="same")(x)
     t_proj3 = tf.keras.layers.Dense(128)(t_emb)
-    t_proj3 = tf.reshape(t_proj3, (-1, 1, 1, 128))
+    t_proj3 = tf.keras.layers.Reshape((1, 1, 128))(t_proj3)
     x = x + t_proj3
 
     # Up block 1
@@ -91,7 +91,7 @@ def mini_diffusion_model(dim=32):
     x = tf.keras.layers.Concatenate(axis=-1)([x, skip2])
     x = tf.keras.layers.Conv2D(64, (3,3), activation="relu", padding="same")(x)
     t_proj4 = tf.keras.layers.Dense(64)(t_emb)
-    t_proj4 = tf.reshape(t_proj4, (-1, 1, 1, 64))
+    t_proj4 = tf.keras.layers.Reshape((1, 1, 64))(t_proj4)
     x = x + t_proj4
 
     # Up block 2
@@ -99,7 +99,7 @@ def mini_diffusion_model(dim=32):
     x = tf.keras.layers.Concatenate(axis=-1)([x, skip1])
     x = tf.keras.layers.Conv2D(32, (3,3), activation="relu", padding="same")(x)
     t_proj5 = tf.keras.layers.Dense(32)(t_emb)
-    t_proj5 = tf.reshape(t_proj5, (-1, 1, 1, 32))
+    t_proj5 = tf.keras.layers.Reshape((1, 1, 32))(t_proj5)
     x = x + t_proj5
 
     # Output layer
