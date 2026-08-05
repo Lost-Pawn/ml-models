@@ -114,7 +114,7 @@ loss = tf.keras.losses.MeanSquaredError()
 
 # Training loop
 BATCH_SIZE = 1024
-EPOCHS = 20
+EPOCHS = 30
 train_images = train_images.astype('float32') / 255.0
 train_images = np.expand_dims(train_images, axis=-1)
 best_loss = float('inf')
@@ -144,17 +144,47 @@ for epoch in range(EPOCHS):
         model.save("mini_diffusion_model.keras")
 
 # evaluation and visualization of the reverse diffusion process
-plt.figure(figsize=(15, 4))
-for t_val in reversed(t_values):
-    xt, _, _ = forward_diffusion(x0, t_val)
-    noise_pred = model.predict([xt, np.array([t_val])])
-    x0_pred = (xt - np.sqrt(1 - alphas_cumprod[t_val]) * noise_pred) / np.sqrt(alphas_cumprod[t_val])
+def ddpm_sample(model, T, num_images=1, image_shape=(28, 28, 1), save_intermediate_every=None):
+    x = np.random.normal(size=(num_images, *image_shape)).astype('float32')
 
-    plt.subplot(1, len(t_values), t_values.index(t_val) + 1)
-    plt.imshow(x0_pred.reshape(28, 28), cmap='gray')
-    plt.title(f"Reconstructed at t = {t_val}")
+    intermediates = {}
+    for t in reversed(range(T)):
+        t_batch = np.full((num_images,), t, dtype=np.int32)
+        noise_pred = model.predict([x, t_batch])
+
+        alpha_t = alphas[t]
+        alpha_cumprod_t = alphas_cumprod[t]
+        beta_t = beta[t]
+
+        coef = beta_t / np.sqrt(1 - alpha_cumprod_t)
+        mean = (1/np.sqrt(alpha_t)) * (x - coef * noise_pred)
+
+        if t > 0:
+            sigma_t = np.sqrt(beta_t)
+            noise = np.random.normal(size=x.shape).astype('float32')
+            x = mean + sigma_t * noise
+        else:
+            x = mean
+
+        if save_intermediate_every is not None and t % save_intermediate_every == 0:
+            intermediates[t] = x.copy()
+    return x, intermediates
+
+final_samples, intermediates = ddpm_sample(model, T, num_images=1, save_intermediate_every= T // 5)
+
+plt.figure(figsize=(15, 4))
+for idx, (t_val, img) in enumerate(intermediates.items()):
+    plt.subplot(1, len(intermediates), idx + 1)
+    plt.imshow(img[0].reshape(28, 28), cmap='gray')
+    plt.title(f"t = {t_val}")
     plt.axis('off')
 
 plt.tight_layout()
-plt.savefig("reconstructed_all.png")   
-plt.show()
+plt.savefig("reverse_diffusion_process.png")
+
+final_image = final_samples[0].reshape(28, 28)
+plt.figure(figsize=(4, 4))
+plt.imshow(final_image, cmap='gray')
+plt.title("Final Sampled Image")
+plt.axis('off')
+plt.savefig("final_sampled_image.png")
