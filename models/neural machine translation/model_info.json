@@ -1,9 +1,0 @@
-{
-  "model": "TF-IDF (1-2 gram) + Logistic Regression",
-  "num_intents": 19,
-  "num_training_examples": 563,
-  "train_accuracy": 1.0,
-  "test_accuracy": 0.8142,
-  "cv_mean_accuracy": 0.8278,
-  "cv_std_accuracy": 0.0268
-}
