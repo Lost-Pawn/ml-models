@@ -1,0 +1,70 @@
+# Neural Machine Translation (English to French)
+
+A small sequence to sequence model that translates simple English sentences into French. Built with PyTorch using a GRU encoder decoder with Bahdanau attention, the same general architecture used in NMT papers before transformers became the standard.
+
+This is a self contained toy project. Instead of downloading a large parallel corpus, the dataset is generated from sentence templates directly in `data.py`, so the whole thing runs without any internet access or external files.
+
+## Project structure
+
+```
+nmt_project/
+    data.py        builds the English/French sentence pairs and vocabularies
+    model.py        the encoder, attention module, decoder, and seq2seq wrapper
+    train.py        trains the model and saves the weights and vocabularies
+    translate.py    loads the trained model and translates new sentences
+```
+
+Each file has one job, so you can read or change the data generation, the architecture, or the training loop without touching the others.
+
+## How to run it
+
+Install the one dependency:
+
+```
+pip install torch
+```
+
+Train the model, this creates `nmt_model.pt` and `vocabs.pkl` in the same folder:
+
+```
+python3 train.py
+```
+
+Then translate a few sample sentences:
+
+```
+python3 translate.py
+```
+
+You can also run `python3 data.py` on its own if you just want to see what the generated dataset looks like.
+
+## About the dataset
+
+The corpus is built from sentence templates (subject plus adjective, and subject plus verb plus object) covering six subjects, eight adjectives, and twelve verb/object combinations. That works out to 120 sentence pairs total, split 108 for training and 12 for validation. It is small on purpose so training finishes in seconds on a CPU, but that also means the vocabulary is limited to around 45 English words and 52 French words. Feeding it a sentence with words outside that vocabulary will just skip the unknown words rather than fail.
+
+## Results from the actual run
+
+Training for 60 epochs on this dataset:
+
+```
+epoch 1  train loss 3.8140  val loss 3.5258
+epoch 20 train loss 0.0645  val loss 0.1516
+epoch 40 train loss 0.0094  val loss 0.0237
+epoch 60 train loss 0.0041  val loss 0.0106
+```
+
+Sample translations after training:
+
+```
+i am happy      -> je suis heureux
+she is tired    -> elle est fatigue
+we like coffee  -> nous aime le cafe
+they read books -> ils lis des livres
+you are busy    -> tu es occupe
+```
+
+Most of these are correct, though a couple have subject verb agreement slips ("nous aime" should be "nous aimons"). That is expected from a model trained on only 108 sentences. With a real corpus of a few thousand diverse sentence pairs this would clean up a lot.
+
+## Where this could go next
+
+Swapping the GRU for an LSTM, adding beam search instead of greedy decoding in `translate.py`, or training on a real dataset like Tatoeba or Europarl would all be natural next steps if you wanted to push this past a toy demo.

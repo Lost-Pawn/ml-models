@@ -1,0 +1,86 @@
+# ML Chatbot — TF-IDF + Logistic Regression
+
+A small intent-based chatbot built with traditional machine learning (no LLMs, no transformers). It classifies what a user is asking about, then picks a matching pre-written response.
+
+**Pipeline:** Text preprocessing → TF-IDF (unigrams + bigrams) → Logistic Regression → Intent classification → Response selection
+
+## Project structure
+
+```
+ml_chatbot/
+├── intents.json          # training data: 19 intents, 563 example patterns + responses
+├── preprocess.py          # shared text-cleaning logic (used by both training and chat)
+├── train_model.py         # trains the model, evaluates it, saves artifacts
+├── chatbot.py              # command-line chatbot (loads the saved artifacts)
+├── report.md               # what changed, why, and actual measured results
+├── model_info.json         # stats from the last training run (read by chatbot.py at startup)
+├── confusion_matrix.png    # visualization of which intents get confused with which
+├── chatbot_model.pkl       # trained Logistic Regression model
+├── vectorizer.pkl          # fitted TF-IDF vectorizer
+└── responses.pkl           # intent -> list of possible replies
+```
+
+## Requirements
+
+- Python 3.8+
+- `scikit-learn`, `numpy`, `matplotlib`
+
+Install with:
+
+```bash
+pip install scikit-learn numpy matplotlib
+```
+
+## How to run
+
+**1. Train the model** (only needed once, or after editing `intents.json`):
+
+```bash
+python train_model.py
+```
+
+This reads `intents.json`, retrains the vectorizer and model, prints accuracy/precision/recall/F1/classification report/cross-validation results to the console, saves a confusion matrix image, and writes out the four artifact files (`chatbot_model.pkl`, `vectorizer.pkl`, `responses.pkl`, `model_info.json`).
+
+**2. Chat with the bot:**
+
+```bash
+python chatbot.py
+```
+
+```
+========================================
+        ML CHATBOT
+========================================
+Model: TF-IDF (1-2 gram) + Logistic Regression
+Intents: 19
+Training examples: 563
+Cross-validation accuracy: 82.8% (+/- 2.7%)
+
+Bot: Hello! How can I help you? (type 'quit' to exit)
+
+You: hi
+Bot: Hey! How can I help you today?
+
+You: what are your hours?
+Bot: We are open from 9 AM to 6 PM, Monday to Saturday.
+
+You: quit
+Bot: Goodbye! Have a great day.
+```
+
+Type `quit`, `exit`, `bye`, or `goodbye` to end the chat. The chatbot only loads the saved model at startup — it never retrains while you're talking to it.
+
+## How it works, briefly
+
+1. **`preprocess.py`** lowercases text, expands contractions (`don't` → `do not`) so negation words survive cleaning, strips punctuation, and collapses whitespace. The exact same function is used on training patterns and on live user input, so both are cleaned identically.
+2. **`train_model.py`** turns cleaned text into TF-IDF vectors (using both single words and two-word phrases), trains a Logistic Regression classifier on them, evaluates it several ways, and saves the trained pieces to disk.
+3. **`chatbot.py`** loads those saved pieces, cleans each message the user types the same way, asks the model for a probability per intent, and either replies with a random response from the top intent (if confident enough) or asks the user to rephrase (if not).
+
+## Supported intents
+
+`greeting`, `goodbye`, `thanks`, `name`, `hours`, `help`, `age`, `weather_smalltalk`, `creator`, `mood`, `location`, `services`, `pricing`, `contact`, `complaint`, `order_status`, `cancel_order`, `recommendation`, `faq`
+
+## Notes
+
+- See `report.md` for the full before/after comparison, actual measured accuracy numbers, how the confidence threshold and regularization strength (`C`) were tuned, and viva-ready explanations of the ML concepts used.
+- To add a new intent or more examples, edit `intents.json` and rerun `train_model.py` — no code changes needed elsewhere.
